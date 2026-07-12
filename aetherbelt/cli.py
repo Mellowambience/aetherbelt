@@ -16,7 +16,7 @@ import json
 import os
 import subprocess
 import sys
-from datetime import timezone
+from datetime import datetime, timezone
 
 from . import social
 
