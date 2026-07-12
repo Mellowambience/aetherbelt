@@ -1,3 +1,8 @@
+# secrets (NEVER commit — owner-provided, local only)
+.env
+*.env
+.env.local
+
 # Python
 __pycache__/
 *.pyc

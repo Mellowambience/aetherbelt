@@ -16,9 +16,44 @@ import json
 import os
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import timezone
 
 from . import social
+
+
+def _load_dotenv():
+    """Load a local, gitignored .env into os.environ (owner-provided secrets only).
+
+    Searches upward from the current working directory (wherever `aetherbelt`
+    is run) and from this file's directory, taking the first .env found.
+    Never writes, never commits. Existing real env vars win over the file.
+    """
+    here = os.path.dirname(os.path.abspath(__file__))
+    search_roots = [os.getcwd(), here]
+    seen = set()
+    for root in search_roots:
+        cur = os.path.abspath(root)
+        while True:
+            if cur in seen:
+                break
+            seen.add(cur)
+            path = os.path.join(cur, ".env")
+            if os.path.exists(path):
+                with open(path, encoding="utf-8") as fh:
+                    for line in fh:
+                        line = line.strip()
+                        if not line or line.startswith("#") or "=" not in line:
+                            continue
+                        k, v = line.split("=", 1)
+                        k, v = k.strip(), v.strip().strip('"').strip("'")
+                        if k and k not in os.environ:  # env wins over file
+                            os.environ[k] = v
+                return
+            parent = os.path.dirname(cur)
+            if parent == cur:
+                break
+            cur = parent
+
 
 HOME = os.path.expanduser("~")
 
@@ -211,6 +246,7 @@ def cmd_dispatch(args):
 
 
 def main():
+    _load_dotenv()  # owner-provided .env (gitignored); no-op if absent
     ap = argparse.ArgumentParser(description="aetherbelt: unified local toolbelt for the Aether constellation")
     sub = ap.add_subparsers(dest="cmd")
     sub.add_parser("status", help="show all our-own tools + liveness")
