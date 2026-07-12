@@ -142,18 +142,25 @@ def list_outbox(n=10):
     return out[-n:]
 
 
+def _env(*names):
+    """Return the first set env var among aliases (case-sensitive)."""
+    for n in names:
+        v = os.environ.get(n)
+        if v:
+            return v
+    return None
+
+
 def _oauth2_bearer():
     """Mint a short-lived user-context bearer from app creds + refresh token.
 
     Returns a bearer string, or None if the required env vars aren't set.
-    Required env:
-      X_CLIENT_ID, X_CLIENT_SECRET  (the OAuth 2.0 app pair)
-      X_REFRESH_TOKEN               (long-lived, from your initial auth)
+    Accepts common alias names so owner-provided .env files vary freely.
     Nothing is written to disk; the bearer lives only for this process.
     """
-    cid = os.environ.get("X_CLIENT_ID")
-    csec = os.environ.get("X_CLIENT_SECRET")
-    refresh = os.environ.get("X_REFRESH_TOKEN")
+    cid = _env("X_CLIENT_ID")
+    csec = _env("X_CLIENT_SECRET", "API_SECRET")
+    refresh = _env("X_REFRESH_TOKEN")
     if not (cid and csec and refresh):
         return None
     basic = base64.b64encode(f"{cid}:{csec}".encode()).decode()
@@ -180,11 +187,11 @@ def _oauth2_bearer():
 
 def _resolve_bearer():
     """Consent gate. Resolve a posting bearer from env, in priority order:
-    1. static X_BEARER_TOKEN / X_API_KEY (simple path)
+    1. static bearer (several common alias names)
     2. OAuth 2.0 user-context (X_CLIENT_ID/SECRET + X_REFRESH_TOKEN)
     Returns (bearer_or_None, reason).
     """
-    static = os.environ.get("X_BEARER_TOKEN") or os.environ.get("X_API_KEY")
+    static = _env("X_BEARER_TOKEN", "BEARER_TOKEN", "X_API_KEY", "ACCESS_TOKEN", "X_API_TOKEN")
     if static:
         return static, "static"
     bearer = _oauth2_bearer()

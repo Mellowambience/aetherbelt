@@ -212,6 +212,24 @@ def cmd_outbox(args):
 
 
 def cmd_send(args):
+    if getattr(args, "check", False):
+        # read-only: verify creds reach the X API (no post)
+        tok, how = social._resolve_bearer()
+        if not tok:
+            print("AUTH: no credentials resolved (set .env).")
+            return 1
+        import json as _json
+        import urllib.request as _ur
+        req = _ur.Request("https://api.twitter.com/2/users/me",
+                          headers={"Authorization": f"Bearer {tok}"})
+        try:
+            with _ur.urlopen(req, timeout=20) as r:
+                d = _json.load(r)
+            print(f"AUTH OK via {how} → @{d['data']['username']} (id {d['data']['id']})")
+            return 0
+        except Exception as e:  # noqa: BLE001
+            print(f"AUTH FAILED via {how}: {e}")
+            return 1
     rc, msg = social.send_draft(args.id)
     print(msg)
     return rc
@@ -261,7 +279,8 @@ def main():
     sh.add_argument("--thread", action="store_true", help="split into a thread")
     sub.add_parser("outbox", help="preview queued drafts").add_argument("-n", type=int, default=10)
     s = sub.add_parser("send", help="POST a draft (owner flip; needs X creds in env)")
-    s.add_argument("--id", type=int, required=True, help="draft id from outbox")
+    s.add_argument("--id", type=int, default=None, help="draft id from outbox")
+    s.add_argument("--check", action="store_true", help="read-only: verify creds reach X API (no post)")
     args = ap.parse_args()
     if args.cmd == "status":
         return cmd_status(args)
