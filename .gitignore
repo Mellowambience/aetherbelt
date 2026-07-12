@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+*.egg-info/SOURCES.txt
+build/
+dist/
+.eggs/
+
+# local bus + tool state (never commit)
+.aetherbus/
+ledger.json
+steward_log.md
+
+# editor / OS
+.DS_Store
+.idea/
+.vscode/
