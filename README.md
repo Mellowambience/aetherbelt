@@ -23,11 +23,37 @@ aetherbelt bus           # observe the shared AETHERBUS event spine
 aetherbelt dispatch <id> [args...]   # run a tool by its short id
 ```
 
-## Why
-You have 8+ fragmented agent CLIs and our-own scripts. AETHERBELT is the one
-front door for the local ones — a router and health-checker that never wraps or
-replaces them, and that reports to the shared bus so the constellation stays
-whole (Steward principle: many implementations, one shared foundation).
+## Posting (approval-gated — you flip the switch)
+```
+aetherbelt share <note.md> [--thread]   # draft a post/thread from a note -> outbox
+aetherbelt outbox [-n 10]               # preview queued drafts
+aetherbelt send --id N                 # POST (owner flip; needs X creds)
+```
+The agent **drafts and queues only**. Posting requires credentials in the
+environment AND your explicit `send`. Without them, `send` hard-refuses — no
+silent network calls (Steward: consent + accountability).
+
+### X (Twitter) credentials — two ways
+1. **Static bearer (simple):** set `X_BEARER_TOKEN` (or `X_API_KEY`) to a
+   user-context access token. That's it.
+2. **OAuth 2.0 user-context (recommended):** set the app pair +
+   refresh token once; `send` mints a short-lived bearer per post (nothing
+   written to disk):
+   ```
+   X_CLIENT_ID=...        # OAuth 2.0 Client ID (your app)
+   X_CLIENT_SECRET=...    # OAuth 2.0 Client Secret
+   X_REFRESH_TOKEN=...    # long-lived refresh token from your initial auth
+   ```
+   The bearer is resolved in-process only; it is never stored.
+
+> **Tier note:** X API **Free** tier is read-only and cannot post. Posting
+> needs at least the **Basic** ($100/mo) tier. If `send` returns a 403, that's
+> the tier, not the code.
+
+**Never** commit credentials. Put them in your shell env or a local `.env`
+(that aetherbelt's `.gitignore` already excludes). The agent never asks for
+them and never stores them.
+
 
 ## Tools wired
 | id | repo | check |

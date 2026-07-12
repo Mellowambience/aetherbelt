@@ -20,7 +20,9 @@ import json
 import os
 import re
 import sys
+import urllib.parse
 import urllib.request
+import base64
 from datetime import datetime, timezone
 
 HOME = os.path.expanduser("~")
@@ -140,14 +142,69 @@ def list_outbox(n=10):
     return out[-n:]
 
 
+def _oauth2_bearer():
+    """Mint a short-lived user-context bearer from app creds + refresh token.
+
+    Returns a bearer string, or None if the required env vars aren't set.
+    Required env:
+      X_CLIENT_ID, X_CLIENT_SECRET  (the OAuth 2.0 app pair)
+      X_REFRESH_TOKEN               (long-lived, from your initial auth)
+    Nothing is written to disk; the bearer lives only for this process.
+    """
+    cid = os.environ.get("X_CLIENT_ID")
+    csec = os.environ.get("X_CLIENT_SECRET")
+    refresh = os.environ.get("X_REFRESH_TOKEN")
+    if not (cid and csec and refresh):
+        return None
+    basic = base64.b64encode(f"{cid}:{csec}".encode()).decode()
+    body = urllib.parse.urlencode({
+        "grant_type": "refresh_token",
+        "refresh_token": refresh,
+    }).encode()
+    req = urllib.request.Request(
+        "https://api.twitter.com/2/oauth2/token",
+        data=body,
+        headers={"Authorization": f"Basic {basic}",
+                 "Content-Type": "application/x-www-form-urlencoded"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            data = json.load(r)
+        return data.get("access_token")
+    except Exception as e:  # noqa: BLE001
+        bus_emit("aetherbelt", "social-auth", f"token refresh failed: {e}",
+                 level="alert")
+        return None
+
+
+def _resolve_bearer():
+    """Consent gate. Resolve a posting bearer from env, in priority order:
+    1. static X_BEARER_TOKEN / X_API_KEY (simple path)
+    2. OAuth 2.0 user-context (X_CLIENT_ID/SECRET + X_REFRESH_TOKEN)
+    Returns (bearer_or_None, reason).
+    """
+    static = os.environ.get("X_BEARER_TOKEN") or os.environ.get("X_API_KEY")
+    if static:
+        return static, "static"
+    bearer = _oauth2_bearer()
+    if bearer:
+        return bearer, "oauth2-refresh"
+    return None, "no-creds"
+
+
 def send_draft(draft_id):
-    """Owner flip. Requires X_BEARER_TOKEN in env. Hard-refuses without it."""
-    token = os.environ.get("X_BEARER_TOKEN") or os.environ.get("X_API_KEY")
+    """Owner flip. Resolves a bearer (static OR OAuth2 refresh). Hard-refuses without one."""
+    token, how = _resolve_bearer()
     if not token:
         bus_emit("aetherbelt", "social-send", f"REFUSED id {draft_id}: no X credentials in env",
                  level="alert", data={"id": draft_id})
-        return (1, "REFUSED: no X_BEARER_TOKEN / X_API_KEY in environment. "
-                   "Owner must provide credentials, then re-run `aetherbelt send --id %d`." % draft_id)
+        return (1, "REFUSED: no X credentials in environment. Provide ONE of:\n"
+                   "  - X_BEARER_TOKEN (static)\n"
+                   "  - X_CLIENT_ID + X_CLIENT_SECRET + X_REFRESH_TOKEN (OAuth 2.0 user-context)\n"
+                   "Then re-run `aetherbelt send --id %d`." % draft_id)
+    bus_emit("aetherbelt", "social-auth", f"bearer resolved via {how}", level="info",
+             data={"method": how})
     drafts = list_outbox(1000)
     match = next((d for d in drafts if d.get("id") == draft_id), None)
     if not match:
@@ -172,7 +229,6 @@ def send_draft(draft_id):
             return (1, f"post error: {e}")
     bus_emit("aetherbelt", "social-send", f"POSTED id {draft_id} ({posted} part(s))",
              level="info", data={"id": draft_id, "posted": posted})
-    # mark sent
     _mark_sent(draft_id)
     return (0, f"posted {posted}/{len(match['parts'])} part(s) for draft {draft_id}")
 
