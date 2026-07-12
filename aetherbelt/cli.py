@@ -18,6 +18,8 @@ import subprocess
 import sys
 from datetime import datetime, timezone
 
+from . import social
+
 HOME = os.path.expanduser("~")
 
 # --- our-own tools: id -> (repo dir, main script, self-check argv) ---
@@ -140,6 +142,46 @@ def cmd_bus(args):
     return 0
 
 
+def cmd_share(args):
+    if not os.path.exists(args.file):
+        print(f"note not found: {args.file}")
+        return 2
+    draft = social.queue_draft(args.file, as_thread=args.thread)
+    print(f"drafted id {draft['id']} "
+          f"({'thread' if draft['thread'] else 'post'}, {len(draft['parts'])} part(s)) "
+          f"from {os.path.basename(args.file)}")
+    print("preview:")
+    for i, p in enumerate(draft["parts"], 1):
+        print(f"  [{i}] ({len(p)}/{social.X_CHAR_LIMIT}) {p[:80]}{'...' if len(p) > 80 else ''}")
+    print("to post: aetherbelt send --id", draft["id"], "(requires X credentials in env)")
+    return 0
+
+
+def cmd_outbox(args):
+    drafts = social.list_outbox(args.n)
+    if not drafts:
+        print("(outbox empty — use: aetherbelt share <note.md>)")
+        return 0
+    print("=" * 58)
+    print("  AETHERBELT OUTBOX  ·  drafts awaiting your flip")
+    print("=" * 58)
+    for d in drafts:
+        print(f"  id {d['id']}  [{d['status']}]  "
+              f"{'thread' if d['thread'] else 'post'}  {os.path.basename(d['source'])}")
+        for i, p in enumerate(d["parts"], 1):
+            print(f"      [{i}] ({len(p)}/{social.X_CHAR_LIMIT}) {p[:70]}{'...' if len(p) > 70 else ''}")
+    print("=" * 58)
+    print("  send: aetherbelt send --id <id>   (needs X_BEARER_TOKEN in env)")
+    print("=" * 58)
+    return 0
+
+
+def cmd_send(args):
+    rc, msg = social.send_draft(args.id)
+    print(msg)
+    return rc
+
+
 def cmd_dispatch(args):
     if not args.rest:
         print("usage: aetherbelt dispatch <id> [args...]")
@@ -178,6 +220,12 @@ def main():
     b.add_argument("--since", default=None)
     d = sub.add_parser("dispatch", help="run a tool by id")
     d.add_argument("rest", nargs=argparse.REMAINDER, help="<id> [args...]")
+    sh = sub.add_parser("share", help="draft a post/thread from a note -> outbox")
+    sh.add_argument("file", help="path to a .md note (use the .POST.md variant if present)")
+    sh.add_argument("--thread", action="store_true", help="split into a thread")
+    sub.add_parser("outbox", help="preview queued drafts").add_argument("-n", type=int, default=10)
+    s = sub.add_parser("send", help="POST a draft (owner flip; needs X creds in env)")
+    s.add_argument("--id", type=int, required=True, help="draft id from outbox")
     args = ap.parse_args()
     if args.cmd == "status":
         return cmd_status(args)
@@ -187,6 +235,12 @@ def main():
         return cmd_bus(args)
     if args.cmd == "dispatch":
         return cmd_dispatch(args)
+    if args.cmd == "share":
+        return cmd_share(args)
+    if args.cmd == "outbox":
+        return cmd_outbox(args)
+    if args.cmd == "send":
+        return cmd_send(args)
     ap.print_help()
     return 0
 
