@@ -1,0 +1,2 @@
+[console_scripts]
+aetherbelt = aetherbelt.cli:main

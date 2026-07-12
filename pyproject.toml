@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "aetherbelt"
+version = "0.1.0"
+description = "Unified local toolbelt for the Aether constellation — one command for your our-own tools, wired to AETHERBUS."
+readme = "README.md"
+requires-python = ">=3.8"
+dependencies = []
+license = { text = "MIT" }
+
+[project.scripts]
+aetherbelt = "aetherbelt.cli:main"
+
+[tool.setuptools]
+packages = ["aetherbelt"]
